@@ -4,5 +4,6 @@ using the following Java code:
 https://github.com/MAWoodMain/RPI-RFM95W-Reciever/
 
 ## Reading Serial Output
-Windows: Use Putty
-Debian/Linux: cat < /dev/ttyACM0
+Windows: Use Putty<br />
+Debian/Linux: cat < /dev/ttyACM1<br />
+Alternatively, just use the Arduino IDE serial monitor.
