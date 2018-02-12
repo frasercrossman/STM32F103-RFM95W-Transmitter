@@ -1,3 +1,15 @@
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_LSM303_U.h>
+#include <Adafruit_Simple_AHRS.h>
+
+// Create sensor instances.
+Adafruit_LSM303_Accel_Unified accel(30301);
+Adafruit_LSM303_Mag_Unified   mag(30302);
+
+// Create simple AHRS algorithm using the above sensors.
+Adafruit_Simple_AHRS          ahrs(&accel, &mag);
+
 /*
  * Based on work by Thomas Telkamp
  * Available at: https://github.com/tftelkamp/sx127x_tx_rx
@@ -94,11 +106,56 @@ void setup() {
   // Go to standby mode
   writeRegister(REG_LR_OPMODE,MODE_STANDBY);
   
-  Serial.println("Setup Complete");
+  Serial.println("Device Setup Complete");
+
+  // Initialise the sensors.
+  accel.begin();
+  mag.begin();
+  Serial.println("Sensor Initialisation Complete");
 }
 
 void loop() {
   txloop();
+}
+
+void float2Bytes(float val, byte* bytes_array){
+  // Create union of shared memory space
+  union {
+    float float_variable;
+    byte temp_array[4];
+  } u;
+  // Overite bytes of union with float variable
+  u.float_variable = val;
+  // Assign bytes to input array
+  memcpy(bytes_array, u.temp_array, 4);
+}
+
+byte custom_payload[64];
+
+void preparePayload() {
+  sensors_vec_t orientation;
+
+  custom_payload[0] = 0xAA;   // Segment Flag
+  custom_payload[1] = 0x00;
+  custom_payload[2] = 0x01;   // Section ID GPS
+
+  if (ahrs.getOrientation(&orientation))
+  {
+    // Block 1, Roll
+    custom_payload[3] = 0x05;   // Block ID - Float
+    custom_payload[4] = 0x04;   // Data Length
+    float2Bytes(orientation.roll, &custom_payload[5]);
+
+    // Block 2, Pitch
+    custom_payload[9] = 0x05;   // Block ID - Float
+    custom_payload[10] = 0x04;  // Data Length
+    float2Bytes(orientation.pitch, &custom_payload[11]);
+
+    // Block 3, Heading
+    custom_payload[15] = 0x05;  // Block ID - Float
+    custom_payload[16] = 0x04;  // Data Length
+    float2Bytes(orientation.heading, &custom_payload[17]);
+  }
 }
 
 void txloop() {
@@ -106,14 +163,26 @@ void txloop() {
   writeRegister(REG_LR_OPMODE,MODE_STANDBY);
   writeRegister(REG_LR_FIFOTXBASEADDR , 0x00);
   writeRegister(REG_LR_FIFOADDRPTR, 0x00); 
+
+  preparePayload();
   
   select();
 
   SPI.transfer(REG_LR_FIFO | 0x80);
-  for (int i = 0; i < payloadlength; i++){
+  /*for (int i = 0; i < payloadlength; i++){
     Serial.print(payload[i]);
     Serial.print(" ");
     SPI.transfer(payload[i]);
+  }*/
+  for (int i = 0; i < 64; i++) {
+    if (custom_payload[i] < 16) {
+      Serial.print("0x0");
+    } else {
+      Serial.print("0x");
+    }
+    Serial.print(custom_payload[i], HEX);
+    Serial.print(" ");
+    SPI.transfer(custom_payload[i]);
   }
   Serial.println();
   
