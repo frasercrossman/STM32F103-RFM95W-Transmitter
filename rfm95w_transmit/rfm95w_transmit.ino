@@ -19,7 +19,8 @@ Adafruit_Simple_AHRS          ahrs(&accel, &mag);
 #define DIO0    PB0  //  2 for mjs board
 #define RST     PB1 
 
-#define TXDELAY 1000  // in milliseconds
+//#define TXDELAY 1000  // in milliseconds
+#define TXDELAY 100  // in milliseconds
 
 /* --------------------------- */
 
@@ -130,31 +131,59 @@ void float2Bytes(float val, byte* bytes_array){
   memcpy(bytes_array, u.temp_array, 4);
 }
 
+void reverse_array(byte* a, int array_length) {
+  int i = array_length - 1;
+  int j = 0;
+  int temp = 0;
+  
+  while(i > j)
+  {
+    temp = a[i];
+    a[i] = a[j];
+    a[j] = temp;
+    i--;
+    j++;
+  }
+}
+
 byte custom_payload[64];
 
 void preparePayload() {
   sensors_vec_t orientation;
 
-  custom_payload[0] = 0xAA;   // Segment Flag
-  custom_payload[1] = 0x00;
-  custom_payload[2] = 0x01;   // Section ID GPS
+  custom_payload[0] = 0xDA;
+  custom_payload[1] = 0x01;
+  custom_payload[2] = 0xAA;   // Segment Flag
+  custom_payload[3] = 0x00;
+  custom_payload[4] = 0x02;   // Section ID IMU
 
   if (ahrs.getOrientation(&orientation))
   {
+    Serial.print("X:");
+    Serial.print(orientation.roll);
+    Serial.print(" Y:");
+    Serial.print(orientation.pitch);
+    Serial.print(" Z:");
+    Serial.print(orientation.heading);
+    Serial.println("");
+    
     // Block 1, Roll
-    custom_payload[3] = 0x05;   // Block ID - Float
-    custom_payload[4] = 0x04;   // Data Length
-    float2Bytes(orientation.roll, &custom_payload[5]);
-
+    custom_payload[5] = 0x05;   // Block ID - Float
+    custom_payload[6] = 0x04;   // Data Length
+    memcpy(&custom_payload[7], &orientation.roll, 4);
+    reverse_array(&custom_payload[7], 4);
+    
     // Block 2, Pitch
-    custom_payload[9] = 0x05;   // Block ID - Float
-    custom_payload[10] = 0x04;  // Data Length
-    float2Bytes(orientation.pitch, &custom_payload[11]);
+    custom_payload[11] = 0x05;   // Block ID - Float
+    custom_payload[12] = 0x04;  // Data Length
+    memcpy(&custom_payload[13], &orientation.pitch, 4);
+    reverse_array(&custom_payload[13], 4);
 
     // Block 3, Heading
-    custom_payload[15] = 0x05;  // Block ID - Float
-    custom_payload[16] = 0x04;  // Data Length
-    float2Bytes(orientation.heading, &custom_payload[17]);
+    custom_payload[17] = 0x05;  // Block ID - Float
+    custom_payload[18] = 0x04;  // Data Length
+    memcpy(&custom_payload[19], &orientation.heading, 4);
+    reverse_array(&custom_payload[19], 4);
   }
 }
 
@@ -192,9 +221,9 @@ void txloop() {
   writeRegister(REG_LR_PACONFIG, PA_MED_BOOST);    // TURN PA TO MAX POWER
   writeRegister(REG_LR_OPMODE, MODE_TX);
   
-  Serial.println("Wait for dio0 (txdone)");  
-  while(digitalRead(DIO0) == 0)  {  Serial.print(". "); delay(10);  }
-  Serial.println("");
+  //Serial.println("Wait for dio0 (txdone)");  
+  while(digitalRead(DIO0) == 0)  {   delay(10);  } //Serial.print(". ");
+  //Serial.println("");
   
   // clear the flags 0x08 is the TxDone flag
   writeRegister(REG_LR_IRQFLAGS, RFLR_IRQFLAGS_TXDONE_MASK); 
