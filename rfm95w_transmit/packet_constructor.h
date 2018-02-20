@@ -1,0 +1,10 @@
+//
+// Created by fraser on 20/02/18.
+//
+
+#ifndef STM32F103_RFM95W_TRANSMITTER_PACKET_CONSTRUCTOR_H
+#define STM32F103_RFM95W_TRANSMITTER_PACKET_CONSTRUCTOR_H
+
+void reverse_array(unsigned char* a, int array_length);
+
+#endif //STM32F103_RFM95W_TRANSMITTER_PACKET_CONSTRUCTOR_H

@@ -2,13 +2,26 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_LSM303_U.h>
 #include <Adafruit_Simple_AHRS.h>
+#include <TinyGPS++.h>
+#include <RTClock.h>
+
+#include "packet_constructor.h" -----------------------
+
+// The TinyGPS++ object
+TinyGPSPlus gps;
+
+// Initialise real-time clock
+RTClock rt (RTCSEL_LSE);
 
 // Create sensor instances.
 Adafruit_LSM303_Accel_Unified accel(30301);
-Adafruit_LSM303_Mag_Unified   mag(30302);
+Adafruit_LSM303_Mag_Unified mag(30302);
 
 // Create simple AHRS algorithm using the above sensors.
-Adafruit_Simple_AHRS          ahrs(&accel, &mag);
+Adafruit_Simple_AHRS ahrs(&accel, &mag);
+
+// Orientation vector
+sensors_vec_t orientation;
 
 /*
  * Based on work by Thomas Telkamp
@@ -19,8 +32,7 @@ Adafruit_Simple_AHRS          ahrs(&accel, &mag);
 #define DIO0    PB0  //  2 for mjs board
 #define RST     PB1 
 
-//#define TXDELAY 1000  // in milliseconds
-#define TXDELAY 100  // in milliseconds
+#define TXDELAY 1000  // in milliseconds
 
 /* --------------------------- */
 
@@ -64,7 +76,7 @@ char message[256];
 #define MODEMCONFIG2      (RFLR_MODEMCONFIG2_SF_8 | RFLR_MODEMCONFIG2_TXCONTINUOUSMODE_OFF| RFLR_MODEMCONFIG2_RXPAYLOADCRC_ON)
 
 void setup() {
-  // initialize the pins
+  // initialise the pins
   delay(5000);
   pinMode(SSPIN, OUTPUT); 
   pinMode(DIO0,  INPUT_PULLDOWN);
@@ -74,11 +86,12 @@ void setup() {
   digitalWrite(RST, HIGH);
   delay(100);
   Serial.begin(9600);
+  Serial1.begin(9600);
   
   SPI.begin();
-  SPI.setBitOrder(MSBFIRST); // Set the SPI_1 bit order
-  SPI.setDataMode(SPI_MODE0); //Set the  SPI_2 data mode 0
-  SPI.setClockDivider(SPI_CLOCK_DIV16);      // Slow speed (72 / 16 = 4.5 MHz SPI_1 speed)
+  SPI.setBitOrder(MSBFIRST);            // Set the SPI_1 bit order
+  SPI.setDataMode(SPI_MODE0);           // Set the  SPI_2 data mode 0
+  SPI.setClockDivider(SPI_CLOCK_DIV16); // Slow speed (72 / 16 = 4.5 MHz SPI_1 speed)
   Serial.println(readRegister(0x42));
   // LoRa mode 
   writeRegister(REG_LR_OPMODE,MODE_SLEEP);
@@ -116,63 +129,26 @@ void setup() {
 }
 
 void loop() {
+  Serial.print(".");
+  getData();
   txloop();
 }
 
-void float2Bytes(float val, byte* bytes_array){
-  // Create union of shared memory space
-  union {
-    float float_variable;
-    byte temp_array[4];
-  } u;
-  // Overite bytes of union with float variable
-  u.float_variable = val;
-  // Assign bytes to input array
-  memcpy(bytes_array, u.temp_array, 4);
-}
-
-void reverse_array(byte* a, int array_length) {
-  int i = array_length - 1;
-  int j = 0;
-  int temp = 0;
-  
-  while(i > j)
-  {
-    temp = a[i];
-    a[i] = a[j];
-    a[j] = temp;
-    i--;
-    j++;
-  }
-}
-
-byte custom_payload[64];
+unsigned char custom_payload[64];
 
 void preparePayload() {
-  sensors_vec_t orientation;
+    custom_payload[0] = 0xDA;
+    custom_payload[1] = 0x01;
+    custom_payload[2] = 0xAA;   // Segment Flag
+    custom_payload[3] = 0x00;
+    custom_payload[4] = 0x02;   // Section ID IMU
 
-  custom_payload[0] = 0xDA;
-  custom_payload[1] = 0x01;
-  custom_payload[2] = 0xAA;   // Segment Flag
-  custom_payload[3] = 0x00;
-  custom_payload[4] = 0x02;   // Section ID IMU
-
-  if (ahrs.getOrientation(&orientation))
-  {
-    Serial.print("X:");
-    Serial.print(orientation.roll);
-    Serial.print(" Y:");
-    Serial.print(orientation.pitch);
-    Serial.print(" Z:");
-    Serial.print(orientation.heading);
-    Serial.println("");
-    
     // Block 1, Roll
     custom_payload[5] = 0x05;   // Block ID - Float
     custom_payload[6] = 0x04;   // Data Length
     memcpy(&custom_payload[7], &orientation.roll, 4);
     reverse_array(&custom_payload[7], 4);
-    
+
     // Block 2, Pitch
     custom_payload[11] = 0x05;   // Block ID - Float
     custom_payload[12] = 0x04;  // Data Length
@@ -184,7 +160,54 @@ void preparePayload() {
     custom_payload[18] = 0x04;  // Data Length
     memcpy(&custom_payload[19], &orientation.heading, 4);
     reverse_array(&custom_payload[19], 4);
-  }
+
+    custom_payload[23] = 0xAA;   // Segment Flag
+    custom_payload[24] = 0x00;
+    custom_payload[25] = 0x04;   // Section ID Time
+
+    int32_t time = rt.getTime();
+
+    // Block 1, Time
+    custom_payload[26] = 0x03;  // Block ID - Int
+    custom_payload[27] = 0x04;  // Data Length
+    memcpy(&custom_payload[28], &time, 4);
+    reverse_array(&custom_payload[28], 4);
+
+    custom_payload[32] = 0xAA;   // Segment Flag
+    custom_payload[33] = 0x00;
+    custom_payload[34] = 0x03;   // Section ID GPS
+
+    double lat = 51.908207; //gps->location.lat();
+    double lng = -1.403191; //gps->location.lng();
+
+    // Block 1, Latitude
+    custom_payload[35] = 0x06;  // Block ID - Int
+    custom_payload[36] = 0x08;  // Data Length
+    memcpy(&custom_payload[37], &lat, 8);
+    reverse_array(&custom_payload[37], 8);
+
+    // Block 2, Longitude
+    custom_payload[45] = 0x06;  // Block ID - Int
+    custom_payload[46] = 0x08;  // Data Length
+    memcpy(&custom_payload[47], &lng, 8);
+    reverse_array(&custom_payload[47], 8);
+
+    // Block 3, Altitude
+    //custom_payload[57] = 0x06;  // Block ID - Int
+    //custom_payload[58] = 0x08;  // Data Length
+    //memcpy(&custom_payload[59], &gps.location.lat(), 8); // note- change from lat to alt
+    //reverse_array(&custom_payload[59], 8);
+}
+
+void getData() {
+  // Get GPS data
+  while (Serial1.available() > 0) gps.encode(Serial1.read());
+
+  // Get orientation data
+  ahrs.getOrientation(&orientation);
+
+  // Get time
+  //time = rt.getTime();
 }
 
 void txloop() {
@@ -198,11 +221,6 @@ void txloop() {
   select();
 
   SPI.transfer(REG_LR_FIFO | 0x80);
-  /*for (int i = 0; i < payloadlength; i++){
-    Serial.print(payload[i]);
-    Serial.print(" ");
-    SPI.transfer(payload[i]);
-  }*/
   for (int i = 0; i < 64; i++) {
     if (custom_payload[i] < 16) {
       Serial.print("0x0");
@@ -214,11 +232,11 @@ void txloop() {
     SPI.transfer(custom_payload[i]);
   }
   Serial.println();
-  
+
   unselect();
 
-  writeRegister(REG_LR_LNA, LNA_OFF_GAIN);  // TURN LNA OFF FOR TRANSMITT
-  writeRegister(REG_LR_PACONFIG, PA_MED_BOOST);    // TURN PA TO MAX POWER
+  writeRegister(REG_LR_LNA, LNA_OFF_GAIN);        // TURN LNA OFF FOR TRANSMIT
+  writeRegister(REG_LR_PACONFIG, PA_MED_BOOST);   // TURN PA TO MAX POWER
   writeRegister(REG_LR_OPMODE, MODE_TX);
   
   //Serial.println("Wait for dio0 (txdone)");  
