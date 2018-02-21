@@ -163,7 +163,7 @@ void txloop() {
     Serial.print(", Heading: ");
     Serial.print(orientation.heading);
 
-    Serial.print(" {[Time] ");
+    Serial.print("} {[Time] ");
     Serial.print(rt.getTime());
 
     Serial.print(" {[GPS] ");
@@ -171,7 +171,7 @@ void txloop() {
     Serial.print(gps.location.lat());
     Serial.print(", Lng: ");
     Serial.print(gps.location.lng());
-    Serial.println();
+    Serial.println("}");
 #endif
 
     construct_payload(&custom_payload[0], &orientation, rt.getTime(), gps);
