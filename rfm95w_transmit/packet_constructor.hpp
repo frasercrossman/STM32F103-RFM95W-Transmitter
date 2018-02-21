@@ -10,6 +10,6 @@
 
 void reverse_array(unsigned char* a, int array_length);
 
-void preparePayload(unsigned char* custom_payload, sensors_vec_t* orientation, int time, TinyGPSPlus gps);
+void construct_payload(unsigned char* arr, sensors_vec_t* orientation, int time, TinyGPSPlus gps);
 
 #endif //STM32F103_RFM95W_TRANSMITTER_PACKET_CONSTRUCTOR_H

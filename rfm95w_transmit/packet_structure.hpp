@@ -23,6 +23,7 @@
 #define BATTERY_SEG_ID          0x01
 #define IMU_SEG_ID              0x02
 #define GPS_SEG_ID              0x03
+#define TIME_SEG_ID             0x04
 
 /*!
  * ============================================================================

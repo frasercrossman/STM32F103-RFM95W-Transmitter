@@ -142,7 +142,7 @@ void getData() {
   ahrs.getOrientation(&orientation);
 
   // Get time
-  //time = rt.getTime();
+  //time = rt.getTime(); // strange error
 }
 
 unsigned char custom_payload[64];
@@ -153,15 +153,28 @@ void txloop() {
     writeRegister(REG_LR_FIFOTXBASEADDR , 0x00);
     writeRegister(REG_LR_FIFOADDRPTR, 0x00);
 
-    Serial.print("X: ");
+#define DEBUG 1
+#if DEBUG
+    Serial.print("{[Orientation] ");
+    Serial.print("Roll: ");
     Serial.print(orientation.roll);
-    Serial.print("Y: ");
+    Serial.print(", Pitch: ");
     Serial.print(orientation.pitch);
-    Serial.print("Z: ");
+    Serial.print(", Heading: ");
     Serial.print(orientation.heading);
-    Serial.println();
 
-    preparePayload(&custom_payload[0], &orientation, 18, gps);
+    Serial.print(" {[Time] ");
+    Serial.print(rt.getTime());
+
+    Serial.print(" {[GPS] ");
+    Serial.print("Lat: ");
+    Serial.print(gps.location.lat());
+    Serial.print(", Lng: ");
+    Serial.print(gps.location.lng());
+    Serial.println();
+#endif
+
+    construct_payload(&custom_payload[0], &orientation, rt.getTime(), gps);
 
     select();
 
