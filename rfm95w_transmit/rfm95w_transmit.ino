@@ -30,7 +30,7 @@ sensors_vec_t orientation;
 
 #define SSPIN   PA4  // 10 for mjs board
 #define DIO0    PB0  //  2 for mjs board
-#define RST     PB1 
+#define RST     PB1
 
 #define TXDELAY 1000  // in milliseconds
 
@@ -59,11 +59,11 @@ char message[256];
 #define MODE_STANDBY      (RFLR_OPMODE_LONGRANGEMODE_ON | RFLR_OPMODE_STANDBY)     // 0x81
 
 #define FRF_MSB           0xD9 // 868.1 Mhz (see datasheet)
-#define FRF_MID           0x06 
-#define FRF_LSB           0x66 
+#define FRF_MID           0x06
+#define FRF_LSB           0x66
 
 #define LNA_MAX_GAIN      (RFLR_LNA_GAIN_G1 | RFLR_LNA_BOOST_HF_ON) // 0x23
-#define LNA_OFF_GAIN      RFLR_LNA_BOOST_HF_OFF 
+#define LNA_OFF_GAIN      RFLR_LNA_BOOST_HF_OFF
 
 
 
@@ -76,78 +76,89 @@ char message[256];
 #define MODEMCONFIG2      (RFLR_MODEMCONFIG2_SF_8 | RFLR_MODEMCONFIG2_TXCONTINUOUSMODE_OFF| RFLR_MODEMCONFIG2_RXPAYLOADCRC_ON)
 
 void setup() {
-  // initialise the pins
-  delay(5000);
-  pinMode(SSPIN, OUTPUT); 
-  pinMode(DIO0,  INPUT_PULLDOWN);
-  pinMode(RST,  INPUT_PULLUP);
-  digitalWrite(RST, LOW);
-  delay(100);
-  digitalWrite(RST, HIGH);
-  delay(100);
-  Serial.begin(9600);
-  Serial1.begin(9600);
-  
-  SPI.begin();
-  SPI.setBitOrder(MSBFIRST);            // Set the SPI_1 bit order
-  SPI.setDataMode(SPI_MODE0);           // Set the  SPI_2 data mode 0
-  SPI.setClockDivider(SPI_CLOCK_DIV16); // Slow speed (72 / 16 = 4.5 MHz SPI_1 speed)
-  Serial.println(readRegister(0x42));
-  // LoRa mode 
-  writeRegister(REG_LR_OPMODE,MODE_SLEEP);
+    // initialise the pins
+    delay(5000);
+    pinMode(PC13, OUTPUT);
+    digitalWrite(PC13, LOW);
+    delay(1000);
+    digitalWrite(PC13, HIGH);
+    delay(5000);
+    pinMode(SSPIN, OUTPUT);
+    pinMode(DIO0,  INPUT_PULLDOWN);
+    pinMode(RST,  INPUT_PULLUP);
+    digitalWrite(RST, LOW);
+    delay(100);
+    digitalWrite(RST, HIGH);
+    delay(100);
+    Serial.begin(9600);
+    Serial1.begin(9600);
 
-  // Frequency
-  //writeRegister(REG_LR_FRFMSB,FRF_MSB);
-  //writeRegister(REG_LR_FRFMID,FRF_MID);
-  //writeRegister(REG_LR_FRFLSB,FRF_LSB);
-  
-  // Frequency
-  uint64_t frf = ((uint64_t)freq << 19) / 32000000;
-  writeRegister(REG_LR_FRFMSB, (uint8_t)(frf>>16) );
-  writeRegister(REG_LR_FRFMID, (uint8_t)(frf>> 8) );
-  writeRegister(REG_LR_FRFLSB, (uint8_t)(frf>> 0) );
+    SPI.begin();
+    SPI.setBitOrder(MSBFIRST);            // Set the SPI_1 bit order
+    SPI.setDataMode(SPI_MODE0);           // Set the  SPI_2 data mode 0
+    SPI.setClockDivider(SPI_CLOCK_DIV16); // Slow speed (72 / 16 = 4.5 MHz SPI_1 speed)
 
-  // Turn on implicit header mode and set payload length
-  writeRegister(REG_LR_MODEMCONFIG1, MODEMCONFIG1);
-  writeRegister(REG_LR_MODEMCONFIG2, MODEMCONFIG2);
-  writeRegister(REG_LR_PARAMP,RFLR_PARAMP_0050_US);
-  writeRegister(REG_LR_PAYLOADLENGTH, payloadlength);
-  writeRegister(REG_LR_SYNCWORD,0x34);  // LoRaWAN Public = 0x34, Private = 0x12
+    Serial.println(readRegister(0x42));
+    // LoRa mode
+    writeRegister(REG_LR_OPMODE,MODE_SLEEP);
 
-  // Change the DIO mapping to 01 so we can listen for TxDone on the interrupt
-  writeRegister(REG_LR_DIOMAPPING1, RFLR_DIOMAPPING1_DIO0_01);
+    // Frequency
+    //writeRegister(REG_LR_FRFMSB,FRF_MSB);
+    //writeRegister(REG_LR_FRFMID,FRF_MID);
+    //writeRegister(REG_LR_FRFLSB,FRF_LSB);
 
-  // Go to standby mode
-  writeRegister(REG_LR_OPMODE,MODE_STANDBY);
-  
-  Serial.println("Device Setup Complete");
+    // Frequency
+    uint64_t frf = ((uint64_t)freq << 19) / 32000000;
+    writeRegister(REG_LR_FRFMSB, (uint8_t)(frf>>16) );
+    writeRegister(REG_LR_FRFMID, (uint8_t)(frf>> 8) );
+    writeRegister(REG_LR_FRFLSB, (uint8_t)(frf>> 0) );
 
-  // Initialise the sensors.
-  accel.begin();
-  mag.begin();
-  Serial.println("Sensor Initialisation Complete");
+    // Turn on implicit header mode and set payload length
+    writeRegister(REG_LR_MODEMCONFIG1, MODEMCONFIG1);
+    writeRegister(REG_LR_MODEMCONFIG2, MODEMCONFIG2);
+    writeRegister(REG_LR_PARAMP,RFLR_PARAMP_0050_US);
+    writeRegister(REG_LR_PAYLOADLENGTH, 128);
+    writeRegister(REG_LR_SYNCWORD,0x34);  // LoRaWAN Public = 0x34, Private = 0x12
+
+    // Change the DIO mapping to 01 so we can listen for TxDone on the interrupt
+    writeRegister(REG_LR_DIOMAPPING1, RFLR_DIOMAPPING1_DIO0_01);
+
+    // Go to standby mode
+    writeRegister(REG_LR_OPMODE,MODE_STANDBY);
+
+    Serial.println("Device Setup Complete");
+
+    // Initialise the sensors.
+    accel.begin();
+    mag.begin();
+    Serial.println("Sensor Initialisation Complete");
 }
 
 void loop() {
-  Serial.print(".");
-  getData();
-  txloop();
+    delay(1000);
+    //Serial.print(".");
+    //getData();
+    txloop();
 }
 
 void getData() {
-  // Get GPS data
-  while (Serial1.available() > 0) gps.encode(Serial1.read());
+    // Get GPS data
+    while (Serial1.available() > 0) gps.encode(Serial1.read());
 
-  // Get orientation data
-  ahrs.getOrientation(&orientation);
+    // Get orientation data
+    ahrs.getOrientation(&orientation);
 
-  // Get time
-  //time = rt.getTime(); // strange error
+    // Get time
+    //time = rt.getTime(); // strange error
 }
 
-unsigned char custom_payload[64];
+unsigned char custom_payload[128];
 
 void txloop() {
+    int packet_length = construct_payload(&custom_payload[0], &orientation, rt.getTime(), gps, analogRead(PA0));
+
+    writeRegister(REG_LR_PAYLOADLENGTH, packet_length);
+
     // Send
     writeRegister(REG_LR_OPMODE,MODE_STANDBY);
     writeRegister(REG_LR_FIFOTXBASEADDR , 0x00);
@@ -166,28 +177,29 @@ void txloop() {
     Serial.print("} {[Time] ");
     Serial.print(rt.getTime());
 
-    Serial.print(" {[GPS] ");
+    Serial.print("} {[GPS] ");
     Serial.print("Lat: ");
     Serial.print(gps.location.lat());
     Serial.print(", Lng: ");
     Serial.print(gps.location.lng());
+
+    Serial.print("} {[Power] ");
+    Serial.print(analogRead(PA0));
     Serial.println("}");
 #endif
-
-    construct_payload(&custom_payload[0], &orientation, rt.getTime(), gps);
 
     select();
 
     SPI.transfer(REG_LR_FIFO | 0x80);
-    for (int i = 0; i < 64; i++) {
-    if (custom_payload[i] < 16) {
-      Serial.print("0x0");
-    } else {
-      Serial.print("0x");
-    }
-    Serial.print(custom_payload[i], HEX);
-    Serial.print(" ");
-    SPI.transfer(custom_payload[i]);
+    for (int i = 0; i < packet_length; i++) {
+        if (custom_payload[i] < 16) {
+            Serial.print("0x0");
+        } else {
+            Serial.print("0x");
+        }
+        Serial.print(custom_payload[i], HEX);
+        Serial.print(" ");
+        SPI.transfer(custom_payload[i]);
     }
     Serial.println();
 
@@ -209,30 +221,30 @@ void txloop() {
 
 byte readRegister(byte addr)
 {
-  select();
-  SPI.transfer(addr & 0x7F);
-  byte regval = SPI.transfer(0);
-  unselect();
-  return regval;
+    select();
+    SPI.transfer(addr & 0x7F);
+    byte regval = SPI.transfer(0);
+    unselect();
+    return regval;
 }
 
 
 void writeRegister(byte addr, byte value)
 {
-  select();
-  SPI.transfer(addr | 0x80); // OR address with 10000000 to indicate write enable
-  SPI.transfer(value);
-  unselect();
+    select();
+    SPI.transfer(addr | 0x80); // OR address with 10000000 to indicate write enable
+    SPI.transfer(value);
+    unselect();
 }
 
-void select() 
+void select()
 {
-  digitalWrite(SSPIN, LOW);
+    digitalWrite(SSPIN, LOW);
 }
 
 
-void unselect() 
+void unselect()
 {
-  digitalWrite(SSPIN, HIGH);
+    digitalWrite(SSPIN, HIGH);
 }
 
