@@ -29,8 +29,8 @@ sensors_vec_t orientation;
  */
 
 #define SSPIN   PA4  // 10 for mjs board
-#define DIO0    PB0  //  2 for mjs board
-#define RST     PB1
+#define DIO0    PB1  //  2 for mjs board
+#define RST     PB0
 
 #define TXDELAY 1000  // in milliseconds
 
@@ -77,12 +77,14 @@ char message[256];
 
 void setup() {
     // initialise the pins
-    delay(5000);
+
+    // LED flash
     pinMode(PC13, OUTPUT);
     digitalWrite(PC13, LOW);
     delay(1000);
     digitalWrite(PC13, HIGH);
-    delay(5000);
+    delay(2000);
+
     pinMode(SSPIN, OUTPUT);
     pinMode(DIO0,  INPUT_PULLDOWN);
     pinMode(RST,  INPUT_PULLUP);
@@ -131,6 +133,9 @@ void setup() {
     // Initialise the sensors.
     accel.begin();
     mag.begin();
+    // Initialise batter analogue read
+    pinMode(PA0, INPUT_ANALOG);
+
     Serial.println("Sensor Initialisation Complete");
 }
 
@@ -147,9 +152,6 @@ void getData() {
 
     // Get orientation data
     ahrs.getOrientation(&orientation);
-
-    // Get time
-    //time = rt.getTime(); // strange error
 }
 
 unsigned char custom_payload[128];
