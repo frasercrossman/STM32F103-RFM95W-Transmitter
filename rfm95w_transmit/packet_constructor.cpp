@@ -37,7 +37,7 @@ void construct_segment_header(unsigned char* arr, unsigned char section_id) {
 
 void construct_battery_segment(unsigned char* arr, int battery) {
     construct_segment_header(&arr[0], BATTERY_SEG_ID);
-    construct_block(&arr[0 * (INT_BLOCK_LENGTH + 2) + 3], INT_BLOCK_ID, INT_BLOCK_LENGTH, &battery);
+    construct_block(&arr[0 * (SHORT_BLOCK_LENGTH + 2) + 3], SHORT_BLOCK_ID, SHORT_BLOCK_LENGTH, &battery);
 }
 
 void construct_imu_segment(unsigned char* arr, sensors_vec_t* orientation) {
