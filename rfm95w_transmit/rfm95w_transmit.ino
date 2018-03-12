@@ -9,6 +9,34 @@
 #include <hal/hal.h>
 #include <SPI.h>
 
+#include <EEPROM.h>
+int counter = 0;
+
+#define H_BYTES 0x0000
+#define L_BYTES 0x0002
+
+int read_counter() {
+    int cnt = 0;
+    uint16 readVal = 0;
+
+    EEPROM.read(H_BYTES, &readVal);
+    cnt |= readVal;
+    cnt <<= 16;
+    EEPROM.read(L_BYTES, &readVal);
+    cnt |= readVal;
+
+    return cnt;
+}
+
+int set_counter(int cnt) {
+    EEPROM.write(H_BYTES, (cnt >> 16) & 0xFFFF);
+    EEPROM.write(L_BYTES, (cnt >> 0 ) & 0xFFFF);
+}
+
+void increment_counter() {
+    set_counter(read_counter() + 1);
+}
+
 #include "packet_constructor.hpp"
 
 // The TinyGPS++ object
@@ -47,19 +75,19 @@ void os_getArtEui (u1_t* buf) { }
 void os_getDevEui (u1_t* buf) { }
 void os_getDevKey (u1_t* buf) { }
 
-unsigned char custom_payload[128];
+static uint8_t custom_payload[51];
 static osjob_t sendjob;
 
 // Schedule TX every this many seconds (might become longer due to duty
 // cycle limitations).
-const unsigned TX_INTERVAL = 60;
+const unsigned TX_INTERVAL = 60 ;
 
 // Pin mapping
 const lmic_pinmap lmic_pins = {
-    .nss = PA4,
-    .rxtx = LMIC_UNUSED_PIN,
-    .rst = RST,
-    .dio = {DIO0, PB10, PB11},
+        .nss = SSPIN,
+        .rxtx = LMIC_UNUSED_PIN,
+        .rst = RST,
+        .dio = {DIO0, PB10, PB11},
 };
 
 void onEvent (ev_t ev) {
@@ -96,11 +124,11 @@ void onEvent (ev_t ev) {
         case EV_TXCOMPLETE:
             Serial.println(F("EV_TXCOMPLETE (includes waiting for RX windows)"));
             if (LMIC.txrxFlags & TXRX_ACK)
-              Serial.println(F("Received ack"));
+                Serial.println(F("Received ack"));
             if (LMIC.dataLen) {
-              Serial.println(F("Received "));
-              Serial.println(LMIC.dataLen);
-              Serial.println(F(" bytes of payload"));
+                Serial.println(F("Received "));
+                Serial.println(LMIC.dataLen);
+                Serial.println(F(" bytes of payload"));
             }
             // Schedule next transmission
             os_setTimedCallback(&sendjob, os_getTime()+sec2osticks(TX_INTERVAL), do_send);
@@ -121,18 +149,10 @@ void onEvent (ev_t ev) {
         case EV_LINK_ALIVE:
             Serial.println(F("EV_LINK_ALIVE"));
             break;
-         default:
+        default:
             Serial.println(F("Unknown event"));
             break;
     }
-}
-
-void getData() {
-    // Get GPS data
-    while (Serial1.available() > 0) gps.encode(Serial1.read());
-
-    // Get orientation data
-    ahrs.getOrientation(&orientation);
 }
 
 void do_send(osjob_t* j){
@@ -140,13 +160,35 @@ void do_send(osjob_t* j){
     if (LMIC.opmode & OP_TXRXPEND) {
         Serial.println(F("OP_TXRXPEND, not sending"));
     } else {
-        // Prepare data
-        Serial.println("Updating GPS and Orientation data");
-        getData();
-
+        int packet_length = 0;
         // Construct packet
         Serial.println("Constructing the packet");
-        int packet_length = construct_payload(&custom_payload[0], &orientation, rt.getTime(), gps, analogRead(PA0));
+
+        // 5 Cycle Power average
+        int avg_power = 0;
+        for (int i = 0; i < 5; i++) {
+            avg_power += analogRead(PA0);
+        }
+        avg_power = avg_power / 5;
+
+        avg_power -= 3000;
+        avg_power=constrain(avg_power, 0, 1023);
+
+        // Frame counter even, send GPS, TIME, POWER
+        // otherwise send IMU, TIME, POWER
+        if (LMIC.seqnoUp % 2 == 0) {
+            Serial.println("Sending GPS, TIME, and POWER");
+            // Get GPS data
+            while (Serial1.available() > 0) gps.encode(Serial1.read());
+
+            packet_length = construct_payload_1(&custom_payload[0], rt.getTime(), avg_power, gps);
+        } else {
+            Serial.println("Sending IMU, TIME, and POWER");
+            // Get orientation data
+            ahrs.getOrientation(&orientation);
+
+            packet_length = construct_payload_2(&custom_payload[0], rt.getTime(), avg_power, &orientation);
+        }
 
 #define DEBUG 1
 #if DEBUG
@@ -158,18 +200,18 @@ void do_send(osjob_t* j){
         Serial.print(orientation.pitch);
         Serial.print(", Heading: ");
         Serial.print(orientation.heading);
-    
+
         Serial.print("} {[Time] ");
         Serial.print(rt.getTime());
-    
+
         Serial.print("} {[GPS] ");
         Serial.print("Lat: ");
         Serial.print(gps.location.lat());
         Serial.print(", Lng: ");
         Serial.print(gps.location.lng());
-    
+
         Serial.print("} {[Power] ");
-        Serial.print(analogRead(PA0));
+        Serial.print(avg_power);
         Serial.println("}");
 
         // Print data packet (in hex)
@@ -181,12 +223,15 @@ void do_send(osjob_t* j){
             }
             Serial.print(custom_payload[i], HEX);
             Serial.print(" ");
-            SPI.transfer(custom_payload[i]);
         }
+        Serial.println();
 #endif
 
         // Prepare upstream data transmission at the next possible time.
-        LMIC_setTxData2(1, custom_payload, packet_length-1, 1); // last parameters for ACK (0 or 1)
+        LMIC_setTxData2(1, custom_payload, packet_length, 0); // last parameters for ACK (0 or 1)
+        increment_counter();
+        Serial.print("LMIC.seqnoUp: ");
+        Serial.println(LMIC.seqnoUp);
         Serial.println(F("Packet queued"));
     }
     // Next TX is scheduled after TX_COMPLETE event.
@@ -195,16 +240,26 @@ void do_send(osjob_t* j){
 void setup() {
     Serial.begin(9600);
 
+    delay(1000);
+    pinMode(PC13, OUTPUT);
+    digitalWrite(PC13, LOW);
+    delay(1000);
+    digitalWrite(PC13, HIGH);
+    delay(1000);
+
     // Startup delay
     delay(5000);
     Serial.println(F("Starting"));
 
-    #ifdef VCC_ENABLE
-    // For Pinoccio Scout boards
-    pinMode(VCC_ENABLE, OUTPUT);
-    digitalWrite(VCC_ENABLE, HIGH);
-    delay(1000);
-    #endif
+    Serial.println("EEPROM counter");
+    counter = read_counter();
+
+    Serial.println(counter);
+
+
+    //Serial.println("Setting the LMIC sequence number");
+    //Set the counter from memory
+
 
     // LMIC init
     os_init();
@@ -213,7 +268,7 @@ void setup() {
 
     // Set static session parameters. Instead of dynamically establishing a session
     // by joining the network, precomputed session parameters are be provided.
-    #ifdef PROGMEM
+#ifdef PROGMEM
     // On AVR, these values are stored in flash and only copied to RAM
     // once. Copy them to a temporary buffer here, LMIC_setSession will
     // copy them into a buffer of its own again.
@@ -222,12 +277,12 @@ void setup() {
     memcpy_P(appskey, APPSKEY, sizeof(APPSKEY));
     memcpy_P(nwkskey, NWKSKEY, sizeof(NWKSKEY));
     LMIC_setSession (0x1, DEVADDR, nwkskey, appskey);
-    #else
+#else
     // If not running an AVR with PROGMEM, just use the arrays directly
     LMIC_setSession (0x1, DEVADDR, NWKSKEY, APPSKEY);
-    #endif
+#endif
 
-    #if defined(CFG_eu868)
+#if defined(CFG_eu868)
     // Set up the channels used by the Things Network, which corresponds
     // to the defaults of most gateways. Without this, only three base
     // channels from the LoRaWAN specification are used, which certainly
@@ -250,19 +305,19 @@ void setup() {
     // devices' ping slots. LMIC does not have an easy way to define set this
     // frequency and support for class B is spotty and untested, so this
     // frequency is not configured here.
-    #elif defined(CFG_us915)
+#elif defined(CFG_us915)
     // NA-US channels 0-71 are configured automatically
     // but only one group of 8 should (a subband) should be active
     // TTN recommends the second sub band, 1 in a zero based count.
     // https://github.com/TheThingsNetwork/gateway-conf/blob/master/US-global_conf.json
     LMIC_selectSubBand(1);
-    #endif
+#endif
 
     // Disable link check validation
     LMIC_setLinkCheckMode(0);
 
-    // TTN uses SF9 for its RX2 window.
-    LMIC.dn2Dr = DR_SF9;
+    // SOTON uses SF12 for its RX2 window.
+    LMIC.dn2Dr = DR_SF12;
 
     // Set data rate and transmit power for uplink (note: txpow seems to be ignored by the library)
     LMIC_setDrTxpow(DR_SF7,14);
@@ -277,6 +332,15 @@ void setup() {
 
     Serial.println("Sensor Initialisation Complete");
 
+    Serial.print("LMIC.seqnoUp: ");
+    Serial.println(LMIC.seqnoUp);
+    Serial.print("counter: ");
+    Serial.println(counter);
+    LMIC.seqnoUp = counter;
+    Serial.print("LMIC.seqnoUp: ");
+    Serial.println(LMIC.seqnoUp);
+    Serial.print("counter: ");
+    Serial.println(counter);
     // Start job
     do_send(&sendjob);
 }

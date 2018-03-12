@@ -67,27 +67,44 @@ void construct_time_segment(unsigned char* arr, int time) {
     construct_block(&arr[0 * (INT_BLOCK_LENGTH + 2) + 3], INT_BLOCK_ID, INT_BLOCK_LENGTH, &time);
 }
 
-int construct_payload(unsigned char* arr, sensors_vec_t* orientation, int time, TinyGPSPlus gps, int power) {
+int construct_payload_1(unsigned char* arr, int time, int power, TinyGPSPlus gps) {
     int packet_length = 2;
     arr[0] = PACKET_START_1;
     arr[1] = PACKET_START_2;
 
-    if (orientation->roll != 0) {
-        construct_imu_segment(&arr[packet_length], orientation);    // Size = 3 (segment header) + 6 * 3  (blocks) = 21 bytes
-        packet_length += 21;
-    }
     if (time != 0) {
         construct_time_segment(&arr[packet_length], time);         // Size = 3 (segment header) + 6 * 1  (blocks) =  9 bytes
         packet_length += 9;
+    }
+    if (power != 0) {
+        construct_battery_segment(&arr[packet_length], power);     // Size = 3 (segment header) + 4 * 1  (blocks) =  7 bytes
+        packet_length += 7;
     }
     if (gps.location.lat() != 0) {
         construct_gps_segment(&arr[packet_length], gps);           // Size = 3 (segment header) + 10 * 3 (blocks) = 33 bytes
         packet_length += 33;
     }
-    if (power != 0) {
-        construct_battery_segment(&arr[packet_length], power);     // Size = 3 (segment header) + 6 * 1  (blocks) =  9 bytes
+
+    return packet_length; // 2 + 9 + 7 + 33 = 51 bytes
+}
+
+int construct_payload_2(unsigned char* arr, int time, int power, sensors_vec_t* orientation) {
+    int packet_length = 2;
+    arr[0] = PACKET_START_1;
+    arr[1] = PACKET_START_2;
+
+    if (time != 0) {
+        construct_time_segment(&arr[packet_length], time);         // Size = 3 (segment header) + 6 * 1  (blocks) =  9 bytes
         packet_length += 9;
     }
+    if (power != 0) {
+        construct_battery_segment(&arr[packet_length], power);     // Size = 3 (segment header) + 4 * 1  (blocks) =  7 bytes
+        packet_length += 7;
+    }
+    if (orientation->roll != 0) {
+        construct_imu_segment(&arr[packet_length], orientation);    // Size = 3 (segment header) + 6 * 3  (blocks) = 21 bytes
+        packet_length += 21;
+    }
 
-    return packet_length;
+    return packet_length; // 2 + 9 + 7 + 21 = 39 bytes
 }
