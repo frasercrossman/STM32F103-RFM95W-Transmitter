@@ -10,7 +10,6 @@
 #include <SPI.h>
 
 #include <EEPROM.h>
-int counter = 0;
 
 #define H_BYTES 0x0000
 #define L_BYTES 0x0002
@@ -80,7 +79,7 @@ static osjob_t sendjob;
 
 // Schedule TX every this many seconds (might become longer due to duty
 // cycle limitations).
-const unsigned TX_INTERVAL = 60 ;
+const unsigned TX_INTERVAL = 60;
 
 // Pin mapping
 const lmic_pinmap lmic_pins = {
@@ -130,8 +129,9 @@ void onEvent (ev_t ev) {
                 Serial.println(LMIC.dataLen);
                 Serial.println(F(" bytes of payload"));
             }
+            // No need to schedule a second task as another will be send on reboot
             // Schedule next transmission
-            os_setTimedCallback(&sendjob, os_getTime()+sec2osticks(TX_INTERVAL), do_send);
+            //os_setTimedCallback(&sendjob, os_getTime()+sec2osticks(TX_INTERVAL), do_send);
             break;
         case EV_LOST_TSYNC:
             Serial.println(F("EV_LOST_TSYNC"));
@@ -172,7 +172,7 @@ void do_send(osjob_t* j){
         avg_power = avg_power / 5;
 
         avg_power -= 3000;
-        avg_power=constrain(avg_power, 0, 1023);
+        avg_power = constrain(avg_power, 0, 1023);
 
         // Frame counter even, send GPS, TIME, POWER
         // otherwise send IMU, TIME, POWER
@@ -229,37 +229,42 @@ void do_send(osjob_t* j){
 
         // Prepare upstream data transmission at the next possible time.
         LMIC_setTxData2(1, custom_payload, packet_length, 0); // last parameters for ACK (0 or 1)
+
+        // Quick double blink on transmit
+        digitalWrite(PC13, LOW);
+        delay(500);
+        digitalWrite(PC13, HIGH);
+        delay(500);
+        digitalWrite(PC13, LOW);
+        delay(500);
+        digitalWrite(PC13, HIGH);
+
         increment_counter();
-        Serial.print("LMIC.seqnoUp: ");
-        Serial.println(LMIC.seqnoUp);
+
         Serial.println(F("Packet queued"));
     }
     // Next TX is scheduled after TX_COMPLETE event.
 }
 
 void setup() {
+    // Serial textual output
     Serial.begin(9600);
 
+    // Serial for GPS
+    Serial1.begin(9600);
+
+    // Fast start up blink
     delay(1000);
     pinMode(PC13, OUTPUT);
     digitalWrite(PC13, LOW);
-    delay(1000);
+    delay(100);
     digitalWrite(PC13, HIGH);
-    delay(1000);
+    delay(100);
 
     // Startup delay
-    delay(5000);
-    Serial.println(F("Starting"));
-
-    Serial.println("EEPROM counter");
-    counter = read_counter();
-
-    Serial.println(counter);
-
-
-    //Serial.println("Setting the LMIC sequence number");
-    //Set the counter from memory
-
+    delay(4000);
+    Serial.print(F("Starting with initial frame count: "));
+    Serial.println(read_counter());
 
     // LMIC init
     os_init();
@@ -305,12 +310,6 @@ void setup() {
     // devices' ping slots. LMIC does not have an easy way to define set this
     // frequency and support for class B is spotty and untested, so this
     // frequency is not configured here.
-#elif defined(CFG_us915)
-    // NA-US channels 0-71 are configured automatically
-    // but only one group of 8 should (a subband) should be active
-    // TTN recommends the second sub band, 1 in a zero based count.
-    // https://github.com/TheThingsNetwork/gateway-conf/blob/master/US-global_conf.json
-    LMIC_selectSubBand(1);
 #endif
 
     // Disable link check validation
@@ -324,23 +323,19 @@ void setup() {
 
     Serial.println("Device Setup Complete");
 
+    Serial.println("Starting Sensor Initialisation");
     // Initialise the sensors.
     accel.begin();
     mag.begin();
     // Initialise batter analogue read
     pinMode(PA0, INPUT_ANALOG);
-
     Serial.println("Sensor Initialisation Complete");
 
-    Serial.print("LMIC.seqnoUp: ");
-    Serial.println(LMIC.seqnoUp);
-    Serial.print("counter: ");
-    Serial.println(counter);
-    LMIC.seqnoUp = counter;
-    Serial.print("LMIC.seqnoUp: ");
-    Serial.println(LMIC.seqnoUp);
-    Serial.print("counter: ");
-    Serial.println(counter);
+    Serial.print("Setting LMIC Initial Frame Count to: ");
+    Serial.println(read_counter());
+
+    LMIC.seqnoUp = read_counter();
+
     // Start job
     do_send(&sendjob);
 }
