@@ -29,7 +29,7 @@ int read_counter() {
 
 int set_counter(int cnt) {
     EEPROM.write(H_BYTES, (cnt >> 16) & 0xFFFF);
-    EEPROM.write(L_BYTES, (cnt >> 0 ) & 0xFFFF);
+    EEPROM.write(L_BYTES, (cnt >> 0) & 0xFFFF);
 }
 
 void increment_counter() {
@@ -42,7 +42,7 @@ void increment_counter() {
 TinyGPSPlus gps;
 
 // Initialise real-time clock
-RTClock rt (RTCSEL_LSE);
+RTClock rt(RTCSEL_LSE);
 
 // Create sensor instances.
 Adafruit_LSM303_Accel_Unified accel(30301);
@@ -59,10 +59,14 @@ sensors_vec_t orientation;
 #define RST     PB0
 
 // LoRaWAN NwkSKey, network session key
-static const PROGMEM u1_t NWKSKEY[16] = { 0xF7, 0x4B, 0x10, 0x96, 0xF0, 0xD3, 0xDf, 0x8B, 0x72, 0xC5, 0xA3, 0x99, 0x19, 0xA4, 0xAF, 0x73 };
+static const PROGMEM u1_t
+NWKSKEY[16] = {
+0xF7, 0x4B, 0x10, 0x96, 0xF0, 0xD3, 0xDf, 0x8B, 0x72, 0xC5, 0xA3, 0x99, 0x19, 0xA4, 0xAF, 0x73 };
 
 // LoRaWAN AppSKey, application session key
-static const u1_t PROGMEM APPSKEY[16] = { 0x00, 0xC7, 0xCA, 0x42, 0xC8, 0x46, 0x7B, 0x39, 0xE0, 0xF2, 0x52, 0xFE, 0x72, 0x47, 0x07, 0x4E };
+static const u1_t PROGMEM
+APPSKEY[16] = {
+0x00, 0xC7, 0xCA, 0x42, 0xC8, 0x46, 0x7B, 0x39, 0xE0, 0xF2, 0x52, 0xFE, 0x72, 0x47, 0x07, 0x4E };
 
 // LoRaWAN end-device address
 static const u4_t DEVADDR = 0x06BF10C8;
@@ -70,9 +74,11 @@ static const u4_t DEVADDR = 0x06BF10C8;
 // These callbacks are only used in over-the-air activation, so they are
 // left empty here (we cannot leave them out completely unless
 // DISABLE_JOIN is set in config.h, otherwise the linker will complain).
-void os_getArtEui (u1_t* buf) { }
-void os_getDevEui (u1_t* buf) { }
-void os_getDevKey (u1_t* buf) { }
+void os_getArtEui(u1_t * buf) {}
+
+void os_getDevEui(u1_t * buf) {}
+
+void os_getDevKey(u1_t * buf) {}
 
 static uint8_t custom_payload[51];
 static osjob_t sendjob;
@@ -89,10 +95,10 @@ const lmic_pinmap lmic_pins = {
         .dio = {DIO0, PB10, PB11},
 };
 
-void onEvent (ev_t ev) {
+void onEvent(ev_t ev) {
     Serial.print(os_getTime());
     Serial.print(": ");
-    switch(ev) {
+    switch (ev) {
         case EV_SCAN_TIMEOUT:
             Serial.println(F("EV_SCAN_TIMEOUT"));
             break;
@@ -155,7 +161,7 @@ void onEvent (ev_t ev) {
     }
 }
 
-void do_send(osjob_t* j){
+void do_send(osjob_t *j) {
     // Check if there is not a current TX/RX job running
     if (LMIC.opmode & OP_TXRXPEND) {
         Serial.println(F("OP_TXRXPEND, not sending"));
@@ -246,6 +252,18 @@ void do_send(osjob_t* j){
     // Next TX is scheduled after TX_COMPLETE event.
 }
 
+// This custom version of delay() ensures that the gps object
+// is being "fed".
+static void smartDelay(unsigned long ms) {
+    unsigned long start = millis();
+    do {
+        //while (ss.available())
+        while (Serial1.available() > 0)
+            //gps.encode(ss.read());
+            gps.encode(Serial1.read());
+    } while (millis() - start < ms);
+}
+
 void setup() {
     // Serial textual output
     Serial.begin(9600);
@@ -254,7 +272,7 @@ void setup() {
     Serial1.begin(9600);
 
     // Fast start up blink
-    delay(1000);
+    smartDelay(1000);
     pinMode(PC13, OUTPUT);
     digitalWrite(PC13, LOW);
     delay(100);
@@ -262,7 +280,7 @@ void setup() {
     delay(100);
 
     // Startup delay
-    delay(4000);
+    smartDelay(4000);
     Serial.print(F("Starting with initial frame count: "));
     Serial.println(read_counter());
 
@@ -284,7 +302,7 @@ void setup() {
     LMIC_setSession (0x1, DEVADDR, nwkskey, appskey);
 #else
     // If not running an AVR with PROGMEM, just use the arrays directly
-    LMIC_setSession (0x1, DEVADDR, NWKSKEY, APPSKEY);
+    LMIC_setSession(0x1, DEVADDR, NWKSKEY, APPSKEY);
 #endif
 
 #if defined(CFG_eu868)
@@ -319,7 +337,7 @@ void setup() {
     LMIC.dn2Dr = DR_SF12;
 
     // Set data rate and transmit power for uplink (note: txpow seems to be ignored by the library)
-    LMIC_setDrTxpow(DR_SF7,14);
+    LMIC_setDrTxpow(DR_SF7, 14);
 
     Serial.println("Device Setup Complete");
 
